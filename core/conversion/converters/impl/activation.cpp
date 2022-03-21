@@ -82,11 +82,25 @@ auto acthardtanh TORCHTRT_UNUSED =
         .pattern(
             {"aten::prelu(Tensor self, Tensor weight) -> (Tensor)",
              [](ConversionCtx* ctx, const torch::jit::Node* n, args& args) -> bool {
-               auto in = args[0].ITensor();
-               auto slopes = args[1].unwrapToTensor();
+               auto in             = args[0].ITensor();
+               auto slopes         = args[1].unwrapToTensor();
+               auto original_shape = in->getDimensions();
+
+               // when the input dim is not equal to the slopes dim,the line output of ParametricReLU will be all zeros.
+               // since it necessary to avoid the input dim is not equal to the slopes dim.
+               auto in_shape       = util::toVec(original_shape );
+               auto slopes_shape   = slopes.sizes().vec();
+               if(in_shape.size()!=slopes_shape.size() and slopes_shape.size()==1){
+                   std::vector<int64_t> slopes_new_shape ;
+                   for(size_t i = 0;i<in_shape.size();i++){
+                     slopes_new_shape.push_back(
+                       in_shape[i]==slopes_shape[0]?slopes_shape[0]:1
+                     );
+                   }
+                   slopes = slopes.reshape(slopes_new_shape);
+               }
 
                bool to_reshape = false;
-               auto original_shape = in->getDimensions();
                if (slopes.numel() != 1 &&
                    !util::broadcastable(
                        in->getDimensions(),
